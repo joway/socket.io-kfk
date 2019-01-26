@@ -1,10 +1,10 @@
 const http = require('http')
-const SocketIO = require('socket.io')
+const IO = require('socket.io')
 const initKafkaAdapter = require('../dist').initKafkaAdapter
 
 async function main() {
   const server = http.createServer()
-  const io = SocketIO(server)
+  const io = IO(server)
   const opts = {
     prefix: 'socket-io',
     brokerList: '127.0.0.1:9092',
