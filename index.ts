@@ -1,8 +1,9 @@
+import * as Adapter from 'socket.io-adapter'
 import * as msgpack from 'notepack.io'
 import * as uid2 from 'uid2'
 import * as Debug from 'debug'
 import { KafkaProducer, KafkaALOConsumer } from 'kfk'
-import { Namespace, Server, Rooms, Room, Packet, ServerOptions, Adapter } from 'socket.io'
+import { Namespace, Server, Rooms, Room, Packet, ServerOptions } from 'socket.io'
 
 const debug = new Debug('socket-io-kfk')
 const adapterStore: { [ns: string]: Adapter } = {}
@@ -10,13 +11,13 @@ const KAFKA_TOPIC = 'socket_io_msg'
 let consumer: KafkaALOConsumer | null = null
 let producer: KafkaProducer | null = null
 
-class KafkaAdapterOpts {
+export class KafkaAdapterOpts {
   prefix: string
   brokerList: string
   consumerGroupId: string
 }
 
-export async function initKafkaAdapter(opts: KafkaAdapterOpts) {
+export function initKafkaAdapter(opts: KafkaAdapterOpts) {
   consumer = new KafkaALOConsumer(
     {
       'group.id': opts.consumerGroupId,
@@ -34,11 +35,11 @@ export async function initKafkaAdapter(opts: KafkaAdapterOpts) {
     {},
   )
 
-  await consumer.connect()
-  await producer.connect()
-  await consumer.subscribe([KAFKA_TOPIC])
-  // async
-  onmessage()
+  producer
+    .connect()
+    .then(() =>
+      consumer!.connect().then(() => consumer!.subscribe([KAFKA_TOPIC]).then(() => onmessage())),
+    )
 
   function adapter(nsp: Namespace) {
     const ap = new KafkaAdapter(nsp, opts)
@@ -93,7 +94,8 @@ export class KafkaAdapter extends Adapter {
   private consumer: KafkaALOConsumer
 
   constructor(nsp: Namespace, opts: KafkaAdapterOpts) {
-    super()
+    super(nsp)
+
     this.uid = uid2(6)
     this.rooms = {}
     this.sids = {}

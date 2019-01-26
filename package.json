@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/socket.io": "^2.1.2",
+    "socket.io": "^2.2.0",
     "tslint-config-prettier": "^1.17.0",
     "tslint-jike-node": "0.0.17"
   }
