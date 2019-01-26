@@ -2,7 +2,7 @@ import * as Adapter from 'socket.io-adapter'
 import * as msgpack from 'notepack.io'
 import * as uid2 from 'uid2'
 import * as Debug from 'debug'
-import { Kafka } from 'kafkajs'
+import * as Kafka from 'node-rdkafka'
 import { Namespace } from 'socket.io'
 
 const debug = new Debug('socket.io-kfk')
@@ -14,28 +14,51 @@ let producer: any | null = null
 
 export class KafkaAdapterOpts {
   brokerList: string
-  consumerGroupId: string
 }
 
 export function initKafkaAdapter(opts: KafkaAdapterOpts) {
-  const kafka = new Kafka({
-    clientId: 'socket-io',
-    brokers: opts.brokerList.split(','),
+  const p = new Kafka.Producer(
+    {
+      'client.id': 'socket-io',
+      'metadata.broker.list': opts.brokerList,
+    },
+    {},
+  )
+  p.connect()
+  p.on('ready', function() {
+    producer = p
   })
-  consumer = kafka.consumer({
-    groupId: opts.consumerGroupId,
-    heartbeatInterval: 1000,
-    sessionTimeout: 10000,
-  })
-  producer = kafka.producer()
 
-  producer!
-    .connect()
-    .then(() =>
-      consumer!
-        .connect()
-        .then(() => consumer!.subscribe({ topic: KAFKA_TOPIC }).then(() => onmessage())),
-    )
+  const c = new Kafka.KafkaConsumer(
+    {
+      'group.id': 'socket-io-' + uid,
+      'metadata.broker.list': opts.brokerList,
+      rebalance_cb: function(err, assignment) {
+        console.log('assignment', assignment)
+        if (err.code === Kafka.CODES.ERRORS.ERR__ASSIGN_PARTITIONS) {
+          // Note: this can throw when you are disconnected. Take care and wrap it in
+          // a try catch if that matters to you
+          this.assign(assignment)
+        } else if (err.code == Kafka.CODES.ERRORS.ERR__REVOKE_PARTITIONS) {
+          // Same as above
+          this.unassign()
+        } else {
+          // We had a real error
+          console.error(err)
+        }
+      },
+    },
+    {},
+  )
+  c.connect()
+  c.on('ready', function() {
+    consumer = c
+
+    consumer.subscribe([KAFKA_TOPIC])
+
+    // listen kafka topic
+    onmessage()
+  })
 
   function adapter(nsp: Namespace) {
     debug('init adapter with nsp: %s', nsp.name)
@@ -50,57 +73,69 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
 async function onmessage() {
   debug('setting gracefulDeath for consumer')
   const gracefulDeath = async () => {
-    await producer!.disconnect()
-    await consumer!.disconnect()
-    process.exit(0)
+    let disconnected = 0
+    producer.disconnect(function() {
+      disconnected++
+      if (disconnected >= 2) {
+        process.exit(0)
+      }
+    })
+    consumer.disconnect(function() {
+      disconnected++
+      if (disconnected >= 2) {
+        process.exit(0)
+      }
+    })
   }
   process.on('SIGINT', gracefulDeath)
   process.on('SIGQUIT', gracefulDeath)
   process.on('SIGTERM', gracefulDeath)
 
-  while (true) {
-    await consumer.run({
-      autoCommitInterval: 1000,
-      autoCommitThreshold: 100,
-      eachMessage: async ({ topic, partition, message }) => {
-        const msg = message.value
-        const args = msgpack.decode(msg)
-        const _uid = args[0]
-        const packet = args[1]
-        const opts = args[2]
+  consumer.consume(function(err, message) {
+    if (err) {
+      console.error(err)
+      return
+    }
 
-        if (!(_uid && packet && opts)) {
-          return debug('invalid params')
-        }
+    handleMessage(message.value)
+  })
+}
 
-        if (uid === _uid) {
-          return debug('ignore same uid')
-        }
+function handleMessage(message) {
+  const args = msgpack.decode(message)
+  const _uid = args[0]
+  const packet = args[1]
+  const opts = args[2]
 
-        debug('fetch packet: packet(%o) args(%o)', packet, args)
-        const adapter = adapterStore[packet.nsp]
-        if (!adapter) {
-          return debug('skip unknown nsp')
-        }
-
-        if (packet.nsp === undefined) {
-          packet.nsp = '/'
-        }
-        if (packet.nsp !== adapter.nsp.name) {
-          return debug('ignore different namespace')
-        }
-
-        if (opts.rooms && opts.rooms.length === 1) {
-          const room = opts.rooms[0]
-          if (room !== '' && !adapter.rooms.hasOwnProperty(room)) {
-            return debug('ignore unknown room %s', room)
-          }
-        }
-
-        adapter.broadcast(packet, opts, true)
-      },
-    })
+  if (!(_uid && packet && opts)) {
+    return debug('invalid params')
   }
+
+  if (uid === _uid) {
+    return debug('ignore same uid')
+  }
+
+  debug('fetch packet: packet(%o) args(%o)', packet, args)
+  const adapter = adapterStore[packet.nsp]
+  if (!adapter) {
+    return debug('skip unknown nsp')
+  }
+
+  if (packet.nsp === undefined) {
+    packet.nsp = '/'
+  }
+  if (packet.nsp !== adapter.nsp.name) {
+    return debug('ignore different namespace')
+  }
+
+  if (opts.rooms && opts.rooms.length === 1) {
+    const room = opts.rooms[0]
+    if (room !== '' && !adapter.rooms.hasOwnProperty(room)) {
+      return debug('ignore unknown room %s', room)
+    }
+  }
+
+  adapter.broadcast(packet, opts, true)
 }
 
 export class KafkaAdapter extends Adapter {
@@ -131,17 +166,9 @@ export class KafkaAdapter extends Adapter {
       const raw = [uid, packet, opts]
       const msg = msgpack.encode(raw)
       debug('publishing msg %s', raw)
-      producer!
-        .send({
-          topic: KAFKA_TOPIC,
-          messages: [
-            {
-              key: msg,
-              value: msg,
-            },
-          ],
-        })
-        .then(() => debug('produce raw msg success: %s', raw))
+
+      producer.produce(KAFKA_TOPIC, null, Buffer.from(msg))
+      debug('produce raw msg success: %s', raw)
     }
 
     super.broadcast(packet, opts, remote)
