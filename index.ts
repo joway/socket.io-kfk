@@ -5,7 +5,7 @@ import * as Debug from 'debug'
 import { KafkaProducer, KafkaALOConsumer } from 'kfk'
 import { Namespace, Server, Rooms, Room, Packet, ServerOptions } from 'socket.io'
 
-const debug = new Debug('socket-io-kfk')
+const debug = new Debug('socket.io-kfk')
 const adapterStore: { [ns: string]: Adapter } = {}
 const KAFKA_TOPIC = 'socket_io_msg'
 let consumer: KafkaALOConsumer | null = null

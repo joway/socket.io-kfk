@@ -5,14 +5,14 @@
 ### Install
 
 ```shell
-npm install -S socket-io-kfk
+npm install -S socket.io-kfk
 ```
 
 ### Use Adapter
 
 ```js
 import * as IO from 'socket-io'
-import { initKafkaAdapter } from 'socket-io-kfk'
+import { initKafkaAdapter } from 'socket.io-kfk'
 
 // create socket.io server
 const server = http.createServer()
