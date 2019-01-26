@@ -1,18 +1,33 @@
 {
   "name": "socket.io-kfk",
-  "version": "0.0.1",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "version": "0.0.2",
+  "description": "The kafka adapter for socket.io",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT License",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joway/socket.io-kfk.git"
   },
-  "author": "Joway Wang",
-  "license": "ISC",
+  "keywords": [
+    "nodejs",
+    "kafka",
+    "socket.io"
+  ],
+  "scripts": {
+    "prepublishOnly": "npm run build",
+    "compile": "tsc",
+    "clean": "rm -rf dist",
+    "purge": "rm -rf package-lock.json node_modules && npm run clean",
+    "build": "npm run clean && npm run compile",
+    "lint": "tslint ./*.ts --project .",
+    "prettier": "prettier --config ./.prettierrc --write './*.ts'"
+  },
   "dependencies": {
-    "debug": "^4.1.1",
-    "kfk": "^0.3.2",
-    "notepack.io": "^2.2.0",
-    "socket.io-adapter": "^1.1.1",
+    "debug": "4.1.1",
+    "kfk": "0.3.2",
+    "notepack.io": "2.2.0",
+    "socket.io-adapter": "1.1.1",
     "uid2": "0.0.3"
   },
   "devDependencies": {
