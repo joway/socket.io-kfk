@@ -1,4 +1,6 @@
-# socket.io-kfk
+<img width="200px;" src="logo.png" />
+
+# Socket.IO-KFK
 
 ## Usage
 
@@ -30,11 +32,11 @@ const adapter = initKafkaAdapter(opts)
 io.adapter(adapter)
 ```
 
-## Compared to socket-io-redis
+## Why not socket-io.redis?
 
-`socket-io-redis` is a easy and awesome adapter in socket.io ecology. But it use redis as its internal message queue, which had poor performance when have huge events. Yes, we have redis cluster, but now redis cluster just have a simple PUB/SUB implement: [current implementation will simply broadcast each published message to all other nodes](https://redis.io/topics/cluster-spec).
+`socket.io-redis` is a easy and awesome adapter in socket.io ecology. But it use redis as its internal message queue, which have poor performance when have huge events. And redis cluster have a simple PUB/SUB implement: [current implementation will simply broadcast each published message to all other nodes](https://redis.io/topics/cluster-spec). It make us feel hard to expand our socket.io cluster with redis adapter.
 
-So, for the reason of scalability, I write this kafka version to ensure socket.io can handle more than 100k events/s messages.
+So, for the reason of scalability, I write this kafka version to make socket.io can handle more than 100k events/s messages.
 
 ## License
 
