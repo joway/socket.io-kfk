@@ -1,0 +1,23 @@
+{
+  "name": "socket.io-kfk",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Joway Wang",
+  "license": "ISC",
+  "dependencies": {
+    "debug": "^4.1.1",
+    "kfk": "^0.3.2",
+    "notepack.io": "^2.2.0",
+    "socket.io-adapter": "^1.1.1",
+    "uid2": "0.0.3"
+  },
+  "devDependencies": {
+    "@types/socket.io": "^2.1.2",
+    "tslint-config-prettier": "^1.17.0",
+    "tslint-jike-node": "0.0.17"
+  }
+}
