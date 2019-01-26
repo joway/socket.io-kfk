@@ -42,6 +42,7 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
     )
 
   function adapter(nsp: Namespace) {
+    debug('init adapter with nsp: %s', nsp.name)
     const ap = new KafkaAdapter(nsp, opts)
     adapterStore[nsp.name] = ap
     return ap
@@ -51,6 +52,7 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
 }
 
 async function onmessage() {
+  debug('setting gracefulDeath for consumer')
   const gracefulDeath = async () => {
     await producer!.die()
     await consumer!.die()
@@ -63,17 +65,20 @@ async function onmessage() {
   while (true) {
     await consumer!.consume(
       message => {
-        const msg = message.value.toString('utf-8')
+        const msg = message.value
+        debug('fetch encode message: %s', msg)
         const args = msgpack.decode(msg)
         const packet = args[1]
         const opts = args[2]
+        debug('fetch packet: packet(%o) args(%o)', packet, args)
+
         if (adapterStore[packet.nsp]) {
           adapterStore[packet.nsp].broadcast(packet, opts, true)
         }
       },
       {
-        size: 100,
-        concurrency: 5,
+        size: 1,
+        // concurrency: 1,
       },
     )
   }
@@ -113,6 +118,7 @@ export class KafkaAdapter extends Adapter {
    * @api public
    */
   broadcast(packet: any, opts: any, remote: boolean) {
+    debug('broadcast message %o', packet)
     packet.nsp = this.nsp.name
     if (!(remote || (opts && opts.flags && opts.flags.local))) {
       let channel = this.channel
@@ -120,8 +126,8 @@ export class KafkaAdapter extends Adapter {
         channel += opts.rooms[0] + '#'
       }
       const msg = msgpack.encode([this.uid, packet, opts])
-      debug('publishing message to channel %s', channel)
-      this.producer.produce(KAFKA_TOPIC, null, msg, channel)
+      debug('publish msg to channel %s', channel)
+      producer!.produce(KAFKA_TOPIC, null, msg, channel).then(() => debug('produce msg success: %s', msg))
     }
 
     super.broadcast(packet, opts, remote)
