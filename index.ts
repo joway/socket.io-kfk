@@ -2,43 +2,39 @@ import * as Adapter from 'socket.io-adapter'
 import * as msgpack from 'notepack.io'
 import * as uid2 from 'uid2'
 import * as Debug from 'debug'
-import { KafkaProducer, KafkaALOConsumer } from 'kfk'
-import { Namespace, Server, Rooms, Room, Packet, ServerOptions } from 'socket.io'
+import { Kafka } from 'kafkajs'
+import { Namespace } from 'socket.io'
 
 const debug = new Debug('socket.io-kfk')
 const adapterStore: { [ns: string]: Adapter } = {}
 const KAFKA_TOPIC = 'socket_io_msg'
-let consumer: KafkaALOConsumer | null = null
-let producer: KafkaProducer | null = null
+const uid = uid2(6)
+let consumer: any | null = null
+let producer: any | null = null
 
 export class KafkaAdapterOpts {
-  prefix: string
   brokerList: string
   consumerGroupId: string
 }
 
 export function initKafkaAdapter(opts: KafkaAdapterOpts) {
-  consumer = new KafkaALOConsumer(
-    {
-      'group.id': opts.consumerGroupId,
-      'metadata.broker.list': opts.brokerList,
-    },
-    {
-      'auto.offset.reset': 'largest',
-    },
-  )
-  producer = new KafkaProducer(
-    {
-      'client.id': 'socket-io',
-      'metadata.broker.list': opts.brokerList,
-    },
-    {},
-  )
+  const kafka = new Kafka({
+    clientId: 'socket-io',
+    brokers: opts.brokerList.split(','),
+  })
+  consumer = kafka.consumer({
+    groupId: opts.consumerGroupId,
+    heartbeatInterval: 1000,
+    sessionTimeout: 10000,
+  })
+  producer = kafka.producer()
 
-  producer
+  producer!
     .connect()
     .then(() =>
-      consumer!.connect().then(() => consumer!.subscribe([KAFKA_TOPIC]).then(() => onmessage())),
+      consumer!
+        .connect()
+        .then(() => consumer!.subscribe({ topic: KAFKA_TOPIC }).then(() => onmessage())),
     )
 
   function adapter(nsp: Namespace) {
@@ -54,8 +50,8 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
 async function onmessage() {
   debug('setting gracefulDeath for consumer')
   const gracefulDeath = async () => {
-    await producer!.die()
-    await consumer!.die()
+    await producer!.disconnect()
+    await consumer!.disconnect()
     process.exit(0)
   }
   process.on('SIGINT', gracefulDeath)
@@ -63,50 +59,61 @@ async function onmessage() {
   process.on('SIGTERM', gracefulDeath)
 
   while (true) {
-    await consumer!.consume(
-      message => {
+    await consumer.run({
+      autoCommitInterval: 1000,
+      autoCommitThreshold: 100,
+      eachMessage: async ({ topic, partition, message }) => {
         const msg = message.value
-        debug('fetch encode message: %s', msg)
         const args = msgpack.decode(msg)
+        const _uid = args[0]
         const packet = args[1]
         const opts = args[2]
-        debug('fetch packet: packet(%o) args(%o)', packet, args)
 
-        if (adapterStore[packet.nsp]) {
-          adapterStore[packet.nsp].broadcast(packet, opts, true)
+        if (!(_uid && packet && opts)) {
+          return debug('invalid params')
         }
+
+        if (uid === _uid) {
+          return debug('ignore same uid')
+        }
+
+        debug('fetch packet: packet(%o) args(%o)', packet, args)
+        const adapter = adapterStore[packet.nsp]
+        if (!adapter) {
+          return debug('skip unknown nsp')
+        }
+
+        if (packet.nsp === undefined) {
+          packet.nsp = '/'
+        }
+        if (packet.nsp !== adapter.nsp.name) {
+          return debug('ignore different namespace')
+        }
+
+        if (opts.rooms && opts.rooms.length === 1) {
+          const room = opts.rooms[0]
+          if (room !== '' && !adapter.rooms.hasOwnProperty(room)) {
+            return debug('ignore unknown room %s', room)
+          }
+        }
+
+        adapter.broadcast(packet, opts, true)
       },
-      {
-        size: 1,
-        // concurrency: 1,
-      },
-    )
+    })
   }
 }
 
 export class KafkaAdapter extends Adapter {
-  private uid: string
-  private prefix: string
-  private channel: string
   private nsp: Namespace
-  private rooms: Rooms
   /**
    * A dictionary of all the socket ids that we're dealing with, and all
    * the rooms that the socket is currently in
    */
-  private sids: { [id: string]: { [room: string]: boolean } }
-  private producer: KafkaProducer
-  private consumer: KafkaALOConsumer
+  private producer: any
+  private consumer: any
 
   constructor(nsp: Namespace, opts: KafkaAdapterOpts) {
     super(nsp)
-
-    this.uid = uid2(6)
-    this.rooms = {}
-    this.sids = {}
-
-    this.prefix = opts.prefix || 'socket.io'
-    this.channel = this.prefix + '#' + this.nsp.name + '#'
   }
 
   /**
@@ -121,13 +128,20 @@ export class KafkaAdapter extends Adapter {
     debug('broadcast message %o', packet)
     packet.nsp = this.nsp.name
     if (!(remote || (opts && opts.flags && opts.flags.local))) {
-      let channel = this.channel
-      if (opts.rooms && opts.rooms.length === 1) {
-        channel += opts.rooms[0] + '#'
-      }
-      const msg = msgpack.encode([this.uid, packet, opts])
-      debug('publish msg to channel %s', channel)
-      producer!.produce(KAFKA_TOPIC, null, msg, channel).then(() => debug('produce msg success: %s', msg))
+      const raw = [uid, packet, opts]
+      const msg = msgpack.encode(raw)
+      debug('publishing msg %s', raw)
+      producer!
+        .send({
+          topic: KAFKA_TOPIC,
+          messages: [
+            {
+              key: msg,
+              value: msg,
+            },
+          ],
+        })
+        .then(() => debug('produce raw msg success: %s', raw))
     }
 
     super.broadcast(packet, opts, remote)

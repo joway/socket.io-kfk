@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "debug": "4.1.1",
+    "kafkajs": "^1.4.7",
     "kfk": "0.3.2",
     "notepack.io": "2.2.0",
     "socket.io-adapter": "1.1.1",

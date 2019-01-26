@@ -2,11 +2,12 @@ const http = require('http')
 const IO = require('socket.io')
 const initKafkaAdapter = require('../dist').initKafkaAdapter
 
+const port = 8888
+
 async function main() {
   const server = http.createServer()
   const io = IO(server)
   const opts = {
-    prefix: 'socket-io',
     brokerList: '127.0.0.1:9092',
     consumerGroupId: 'socket-io',
   }
@@ -30,7 +31,7 @@ async function main() {
     })
   })
 
-  server.listen(7777)
+  server.listen(port)
 }
 
 main()
