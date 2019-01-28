@@ -22,9 +22,7 @@ const io = IO(server)
 
 // init kafka adapter
 const opts = {
-	prefix: 'socket-io',
 	brokerList: '127.0.0.1:9092',
-	consumerGroupId: 'socket-io',
 }
 const adapter = initKafkaAdapter(opts)
 
