@@ -7,13 +7,15 @@ import { Namespace } from 'socket.io'
 
 const debug = new Debug('socket.io-kfk')
 const adapterStore: { [ns: string]: Adapter } = {}
-const KAFKA_TOPIC = 'socket_io_msg'
+const DEFAULT_KAFKA_TOPIC = 'socketio'
 const uid = uid2(6)
 let consumer: any | null = null
 let producer: any | null = null
 
 export class KafkaAdapterOpts {
   brokerList: string
+  topic: string
+  group: string
 }
 
 export function initKafkaAdapter(opts: KafkaAdapterOpts) {
@@ -31,7 +33,7 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
 
   const c = new Kafka.KafkaConsumer(
     {
-      'group.id': 'socket-io-' + uid,
+      'group.id': opts.group,
       'metadata.broker.list': opts.brokerList,
       rebalance_cb: function(err, assignment) {
         console.log('assignment', assignment)
@@ -54,7 +56,7 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
   c.on('ready', function() {
     consumer = c
 
-    consumer.subscribe([KAFKA_TOPIC])
+    consumer.subscribe([opts.topic || DEFAULT_KAFKA_TOPIC])
 
     // listen kafka topic
     onmessage()
@@ -139,16 +141,12 @@ function handleMessage(message) {
 }
 
 export class KafkaAdapter extends Adapter {
+  private topic: string
   private nsp: Namespace
-  /**
-   * A dictionary of all the socket ids that we're dealing with, and all
-   * the rooms that the socket is currently in
-   */
-  private producer: any
-  private consumer: any
 
   constructor(nsp: Namespace, opts: KafkaAdapterOpts) {
     super(nsp)
+    this.topic = opts.topic || DEFAULT_KAFKA_TOPIC
   }
 
   /**
@@ -167,7 +165,7 @@ export class KafkaAdapter extends Adapter {
       const msg = msgpack.encode(raw)
       debug('publishing msg %s', raw)
 
-      producer.produce(KAFKA_TOPIC, null, Buffer.from(msg))
+      producer.produce(this.topic, null, Buffer.from(msg))
       debug('produce raw msg success: %s', raw)
     }
 

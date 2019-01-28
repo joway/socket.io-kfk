@@ -9,6 +9,8 @@ async function main() {
   const io = IO(server)
   const opts = {
     brokerList: '127.0.0.1:9092',
+    group: 'group2',
+    topic: 'socketio',
   }
   const adapter = initKafkaAdapter(opts)
   io.adapter(adapter)
