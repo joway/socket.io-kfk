@@ -23,6 +23,8 @@ const io = IO(server)
 // init kafka adapter
 const opts = {
 	brokerList: '127.0.0.1:9092',
+	group: 'socketio-group',
+	topic: 'socketio-topic',
 }
 const adapter = initKafkaAdapter(opts)
 
