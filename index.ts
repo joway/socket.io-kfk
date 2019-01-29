@@ -2,7 +2,7 @@ import * as Adapter from 'socket.io-adapter'
 import * as msgpack from 'notepack.io'
 import * as uid2 from 'uid2'
 import * as Debug from 'debug'
-import { Kafka, logLevel } from 'kafkajs'
+import { Kafka, logLevel, CompressionTypes } from 'kafkajs'
 import { Namespace } from 'socket.io'
 
 const debug = new Debug('socket.io-kfk')
@@ -141,15 +141,24 @@ export class KafkaAdapter extends Adapter {
         const msg = msgpack.encode(raw)
         debug('publishing msg %s', raw)
 
+        // hash to kafka partition
+        let key = uid
+        if (opts.rooms && opts.rooms.length > 0) {
+          key = opts.rooms[0]
+        }
+
         producer!
           .send({
             topic: this.topic,
             messages: [
               {
-                key: msg,
+                key,
                 value: msg,
               },
             ],
+            acks: 0,
+            timeout: 30000,
+            compression: CompressionTypes.GZIP,
           })
           .then(() => debug('produce raw msg success: %s', raw))
       }
