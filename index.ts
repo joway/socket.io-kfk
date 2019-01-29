@@ -59,7 +59,7 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
     consumer.subscribe([opts.topic || DEFAULT_KAFKA_TOPIC])
 
     // listen kafka topic
-    onmessage()
+    onmessage().catch(err => console.error(err))
   })
 
   function adapter(nsp: Namespace) {
@@ -99,7 +99,11 @@ async function onmessage() {
       return
     }
 
-    handleMessage(message.value)
+    try {
+      handleMessage(message.value)
+    } catch (err) {
+      console.error(err)
+    }
   })
 }
 
@@ -158,17 +162,21 @@ export class KafkaAdapter extends Adapter {
    * @api public
    */
   broadcast(packet: any, opts: any, remote: boolean) {
-    debug('broadcast message %o', packet)
-    packet.nsp = this.nsp.name
-    if (!(remote || (opts && opts.flags && opts.flags.local))) {
-      const raw = [uid, packet, opts]
-      const msg = msgpack.encode(raw)
-      debug('publishing msg %s', raw)
+    try {
+      debug('broadcast message %o', packet)
+      packet.nsp = this.nsp.name
+      if (!(remote || (opts && opts.flags && opts.flags.local))) {
+        const raw = [uid, packet, opts]
+        const msg = msgpack.encode(raw)
+        debug('publishing msg %s', raw)
 
-      producer.produce(this.topic, null, Buffer.from(msg))
-      debug('produce raw msg success: %s', raw)
+        producer.produce(this.topic, null, Buffer.from(msg))
+        debug('produce raw msg success: %s', raw)
+      }
+
+      super.broadcast(packet, opts, remote)
+    } catch (err) {
+      console.error(err)
     }
-
-    super.broadcast(packet, opts, remote)
   }
 }

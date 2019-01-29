@@ -37,6 +37,11 @@ async function main() {
       nsp.to(room).emit('callback', data)
     })
 
+    socket.on('exchange', (data) => {
+      const room = data.split('|')[0]
+      nsp.to(room).emit('callback', data.split('|')[1])
+    })
+
     socket.on('disconnect', () => {
       console.log('disconnect')
     })
