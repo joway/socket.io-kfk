@@ -5,14 +5,6 @@ const initKafkaAdapter = require('../dist').initKafkaAdapter
 const port = 7777
 const user = '1'
 
-function parseHeader(socket, next) {
-  if (!socket['USER']) {
-    socket['USER'] = {}
-  }
-  socket['USER']['id'] = socket.request.headers['id']
-  return next()
-}
-
 async function main() {
   const server = http.createServer()
   const io = IO(server)
@@ -25,12 +17,11 @@ async function main() {
   io.adapter(adapter)
 
   const nsp = io.of('/nsp')
-  nsp.use(parseHeader)
 
   nsp.on('connection', socket => {
-    const room = socket['USER']['id']
+    const room = '0'
     socket.join(room)
-
+    
     socket.on('event', data => {
       console.log('event', data)
 
