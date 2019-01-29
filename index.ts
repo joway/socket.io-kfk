@@ -2,7 +2,7 @@ import * as Adapter from 'socket.io-adapter'
 import * as msgpack from 'notepack.io'
 import * as uid2 from 'uid2'
 import * as Debug from 'debug'
-import * as Kafka from 'node-rdkafka'
+import { Kafka, logLevel } from 'kafkajs'
 import { Namespace } from 'socket.io'
 
 const debug = new Debug('socket.io-kfk')
@@ -19,48 +19,29 @@ export class KafkaAdapterOpts {
 }
 
 export function initKafkaAdapter(opts: KafkaAdapterOpts) {
-  const p = new Kafka.Producer(
-    {
-      'client.id': 'socket-io',
-      'metadata.broker.list': opts.brokerList,
-    },
-    {},
-  )
-  p.connect()
-  p.on('ready', function() {
-    producer = p
+  const kafka = new Kafka({
+    clientId: 'socketio',
+    brokers: opts.brokerList.split(','),
+    logLevel: logLevel.ERROR,
   })
-
-  const c = new Kafka.KafkaConsumer(
-    {
-      'group.id': opts.group,
-      'metadata.broker.list': opts.brokerList,
-      rebalance_cb: function(err, assignment) {
-        console.log('assignment', assignment)
-        if (err.code === Kafka.CODES.ERRORS.ERR__ASSIGN_PARTITIONS) {
-          // Note: this can throw when you are disconnected. Take care and wrap it in
-          // a try catch if that matters to you
-          this.assign(assignment)
-        } else if (err.code == Kafka.CODES.ERRORS.ERR__REVOKE_PARTITIONS) {
-          // Same as above
-          this.unassign()
-        } else {
-          // We had a real error
-          console.error(err)
-        }
-      },
-    },
-    {},
-  )
-  c.connect()
-  c.on('ready', function() {
-    consumer = c
-
-    consumer.subscribe([opts.topic || DEFAULT_KAFKA_TOPIC])
-
-    // listen kafka topic
-    onmessage().catch(err => console.error(err))
+  consumer = kafka.consumer({
+    groupId: opts.group,
+    // heartbeatInterval: 1000,
+    // sessionTimeout: 10000,
   })
+  producer = kafka.producer()
+
+  producer!
+    .connect()
+    .then(() =>
+      consumer!
+        .connect()
+        .then(() =>
+          consumer!
+            .subscribe({ topic: opts.topic || DEFAULT_KAFKA_TOPIC })
+            .then(() => onmessage().catch(err => console.error(err))),
+        ),
+    )
 
   function adapter(nsp: Namespace) {
     debug('init adapter with nsp: %s', nsp.name)
@@ -75,35 +56,24 @@ export function initKafkaAdapter(opts: KafkaAdapterOpts) {
 async function onmessage() {
   debug('setting gracefulDeath for consumer')
   const gracefulDeath = async () => {
-    let disconnected = 0
-    producer.disconnect(function() {
-      disconnected++
-      if (disconnected >= 2) {
-        process.exit(0)
-      }
-    })
-    consumer.disconnect(function() {
-      disconnected++
-      if (disconnected >= 2) {
-        process.exit(0)
-      }
-    })
+    await producer!.disconnect()
+    await consumer!.disconnect()
+    process.exit(0)
   }
   process.on('SIGINT', gracefulDeath)
   process.on('SIGQUIT', gracefulDeath)
   process.on('SIGTERM', gracefulDeath)
 
-  consumer.consume(function(err, message) {
-    if (err) {
-      console.error(err)
-      return
-    }
-
-    try {
-      handleMessage(message.value)
-    } catch (err) {
-      console.error(err)
-    }
+  await consumer.run({
+    // autoCommitInterval: 1000,
+    // autoCommitThreshold: 100,
+    eachMessage: async ({ topic, partition, message }) => {
+      try {
+        handleMessage(message.value)
+      } catch (err) {
+        console.error(err)
+      }
+    },
   })
 }
 
@@ -171,8 +141,17 @@ export class KafkaAdapter extends Adapter {
         const msg = msgpack.encode(raw)
         debug('publishing msg %s', raw)
 
-        producer.produce(this.topic, null, Buffer.from(msg))
-        debug('produce raw msg success: %s', raw)
+        producer!
+          .send({
+            topic: this.topic,
+            messages: [
+              {
+                key: msg,
+                value: msg,
+              },
+            ],
+          })
+          .then(() => debug('produce raw msg success: %s', raw))
       }
 
       super.broadcast(packet, opts, remote)

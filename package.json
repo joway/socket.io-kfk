@@ -1,6 +1,6 @@
 {
   "name": "socket.io-kfk",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "The kafka adapter for socket.io",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "debug": "4.1.1",
-    "node-rdkafka": "^2.5.1",
+    "kafkajs": "^1.4.7",
     "notepack.io": "2.2.0",
     "socket.io-adapter": "1.1.1",
     "uid2": "0.0.3"
