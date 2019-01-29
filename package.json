@@ -1,6 +1,6 @@
 {
   "name": "socket.io-kfk",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "The kafka adapter for socket.io",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

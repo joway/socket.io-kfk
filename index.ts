@@ -137,6 +137,7 @@ function handleMessage(message) {
   if (opts.rooms && opts.rooms.length === 1) {
     const room = opts.rooms[0]
     if (room !== '' && !adapter.rooms.hasOwnProperty(room)) {
+      debug('adapter.rooms %o', adapter.rooms)
       return debug('ignore unknown room %s', room)
     }
   }
